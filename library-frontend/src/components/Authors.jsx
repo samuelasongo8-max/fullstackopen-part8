@@ -96,14 +96,21 @@ const Authors = (props) => {
         </select>
       </label>
 
-      <label>
-        born
-        <input
-          type="number"
-          value={born}
-          onChange={({ target }) => setBorn(target.value)}
-        />
-      </label>
+    <label>
+  born
+  <select
+    value={born}
+    onChange={({ target }) => setBorn(target.value)}
+    disabled={!name}
+  >
+    <option value="">select year</option>
+    {Array.from({ length: 100 }, (_, i) => 2025 - i).map((year) => (
+      <option key={year} value={year}>
+        {year}
+      </option>
+    ))}
+  </select>
+</label>
 
       <button type="submit">update author</button>
     </form>
