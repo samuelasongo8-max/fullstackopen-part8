@@ -3,6 +3,7 @@ require('dotenv').config()
 const mongoose = require('mongoose')
 const { ApolloServer } = require('@apollo/server')
 const { startStandaloneServer } = require('@apollo/server/standalone')
+const { GraphQLError } = require('graphql')
 
 const Book = require('./models/Book')
 const Author = require('./models/Author')
@@ -71,9 +72,7 @@ const resolvers = {
         filter.genres = args.genre
       }
 
-      const books = await Book.find(filter).populate('author')
-
-      return books
+      return Book.find(filter).populate('author')
     },
 
     allAuthors: async () => {
@@ -92,48 +91,64 @@ const resolvers = {
 
   Mutation: {
     addBook: async (root, args) => {
-      let author = await Author.findOne({
-        name: args.author,
-      })
-
-      if (!author) {
-        author = new Author({
+      try {
+        let author = await Author.findOne({
           name: args.author,
         })
 
-        await author.save()
+        if (!author) {
+          author = new Author({
+            name: args.author,
+          })
+
+          await author.save()
+        }
+
+        const book = new Book({
+          title: args.title,
+          published: args.published,
+          author: author._id,
+          genres: args.genres,
+        })
+
+        await book.save()
+
+        return Book.findById(book._id).populate('author')
+      } catch (error) {
+        throw new GraphQLError('Adding book failed', {
+          extensions: {
+            code: 'BAD_USER_INPUT',
+          },
+        })
       }
-
-      const book = new Book({
-        title: args.title,
-        published: args.published,
-        author: author._id,
-        genres: args.genres,
-      })
-
-      await book.save()
-
-      return Book.findById(book._id).populate('author')
     },
 
     editAuthor: async (root, args) => {
-      const author = await Author.findOne({
-        name: args.name,
-      })
+      try {
+        const author = await Author.findOne({
+          name: args.name,
+        })
 
-      if (!author) {
-        return null
-      }
+        if (!author) {
+          return null
+        }
 
-      author.born = args.setBornTo
+        author.born = args.setBornTo
 
-      await author.save()
+        await author.save()
 
-      return {
-        ...author.toObject(),
-        bookCount: await Book.countDocuments({
-          author: author._id,
-        }),
+        return {
+          ...author.toObject(),
+          bookCount: await Book.countDocuments({
+            author: author._id,
+          }),
+        }
+      } catch (error) {
+        throw new GraphQLError('Updating author failed', {
+          extensions: {
+            code: 'BAD_USER_INPUT',
+          },
+        })
       }
     },
   },
