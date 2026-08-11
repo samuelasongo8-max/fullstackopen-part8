@@ -9,37 +9,37 @@ const Author = require('./models/Author')
 
 const typeDefs = `
 
-  type Book {
+type Book {
+  title: String!
+  published: Int!
+  author: Author!
+  genres: [String!]!
+  id: ID!
+}
+
+type Author {
+  name: String!
+  born: Int
+  bookCount: Int!
+}
+
+type Query {
+  bookCount: Int!
+  authorCount: Int!
+  allBooks(author: String, genre: String): [Book!]!
+  allAuthors: [Author!]!
+}
+
+type Mutation {
+  addBook(
     title: String!
+    author: String!
     published: Int!
-    author: Author!
     genres: [String!]!
-    id: ID!
-  }
+  ): Book!
 
-  type Author {
-    name: String!
-    born: Int
-    bookCount: Int!
-  }
-
-  type Query {
-    bookCount: Int!
-    authorCount: Int!
-    allBooks(author: String, genre: String): [Book!]!
-    allAuthors: [Author!]!
-  }
-
-  type Mutation {
-    addBook(
-      title: String!
-      author: String!
-      published: Int!
-      genres: [String!]!
-    ): Book!
-
-    editAuthor(name: String!, setBornTo: Int!): Author
-  }
+  editAuthor(name: String!, setBornTo: Int!): Author
+}
 `
 
 const resolvers = {
@@ -53,7 +53,7 @@ const resolvers = {
     },
 
     allBooks: async (root, args) => {
-      let books
+      const filter = {}
 
       if (args.author) {
         const author = await Author.findOne({
@@ -64,18 +64,14 @@ const resolvers = {
           return []
         }
 
-        books = await Book.find({
-          author: author._id,
-        }).populate('author')
-      } else {
-        books = await Book.find({}).populate('author')
+        filter.author = author._id
       }
 
       if (args.genre) {
-        books = books.filter((book) =>
-          book.genres.includes(args.genre)
-        )
+        filter.genres = args.genre
       }
+
+      const books = await Book.find(filter).populate('author')
 
       return books
     },
@@ -83,10 +79,14 @@ const resolvers = {
     allAuthors: async () => {
       const authors = await Author.find({})
 
-      return authors.map((author) => ({
-        ...author.toObject(),
-        bookCount: 0,
-      }))
+      return Promise.all(
+        authors.map(async (author) => ({
+          ...author.toObject(),
+          bookCount: await Book.countDocuments({
+            author: author._id,
+          }),
+        }))
+      )
     },
   },
 
@@ -113,7 +113,7 @@ const resolvers = {
 
       await book.save()
 
-      return await Book.findById(book._id).populate('author')
+      return Book.findById(book._id).populate('author')
     },
 
     editAuthor: async (root, args) => {
@@ -131,7 +131,9 @@ const resolvers = {
 
       return {
         ...author.toObject(),
-        bookCount: 0,
+        bookCount: await Book.countDocuments({
+          author: author._id,
+        }),
       }
     },
   },
