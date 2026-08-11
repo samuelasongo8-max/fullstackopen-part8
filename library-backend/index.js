@@ -1,15 +1,17 @@
 require('dotenv').config()
 
 const mongoose = require('mongoose')
+const jwt = require('jsonwebtoken')
+
 const { ApolloServer } = require('@apollo/server')
 const { startStandaloneServer } = require('@apollo/server/standalone')
 const { GraphQLError } = require('graphql')
 
 const Book = require('./models/Book')
 const Author = require('./models/Author')
+const User = require('./models/User')
 
 const typeDefs = `
-
 type Book {
   title: String!
   published: Int!
@@ -24,11 +26,22 @@ type Author {
   bookCount: Int!
 }
 
+type User {
+  username: String!
+  favoriteGenre: String!
+  id: ID!
+}
+
+type Token {
+  value: String!
+}
+
 type Query {
   bookCount: Int!
   authorCount: Int!
   allBooks(author: String, genre: String): [Book!]!
   allAuthors: [Author!]!
+  me: User
 }
 
 type Mutation {
@@ -40,6 +53,16 @@ type Mutation {
   ): Book!
 
   editAuthor(name: String!, setBornTo: Int!): Author
+
+  createUser(
+    username: String!
+    favoriteGenre: String!
+  ): User
+
+  login(
+    username: String!
+    password: String!
+  ): Token
 }
 `
 
@@ -87,10 +110,72 @@ const resolvers = {
         }))
       )
     },
+
+    me: async (root, args, context) => {
+      if (!context.currentUser) {
+        return null
+      }
+
+      return User.findById(context.currentUser.id)
+    },
   },
 
   Mutation: {
-    addBook: async (root, args) => {
+    createUser: async (root, args) => {
+      try {
+        const user = new User({
+          username: args.username,
+          favoriteGenre: args.favoriteGenre,
+          passwordHash: 'secret',
+        })
+
+        await user.save()
+
+        return user
+      } catch (error) {
+        throw new GraphQLError('Creating user failed', {
+          extensions: {
+            code: 'BAD_USER_INPUT',
+          },
+        })
+      }
+    },
+
+    login: async (root, args) => {
+      const user = await User.findOne({
+        username: args.username,
+      })
+
+      if (!user || args.password !== 'secret') {
+        throw new GraphQLError('Wrong credentials', {
+          extensions: {
+            code: 'BAD_USER_INPUT',
+          },
+        })
+      }
+
+      const userForToken = {
+        username: user.username,
+        id: user._id.toString(),
+      }
+
+      return {
+        value: jwt.sign(
+          userForToken,
+          process.env.JWT_SECRET
+        ),
+      }
+    },
+
+    addBook: async (root, args, context) => {
+      if (!context.currentUser) {
+        throw new GraphQLError('not authenticated', {
+          extensions: {
+            code: 'UNAUTHENTICATED',
+          },
+        })
+      }
+
       try {
         let author = await Author.findOne({
           name: args.author,
@@ -123,7 +208,15 @@ const resolvers = {
       }
     },
 
-    editAuthor: async (root, args) => {
+    editAuthor: async (root, args, context) => {
+      if (!context.currentUser) {
+        throw new GraphQLError('not authenticated', {
+          extensions: {
+            code: 'UNAUTHENTICATED',
+          },
+        })
+      }
+
       try {
         const author = await Author.findOne({
           name: args.name,
@@ -166,6 +259,13 @@ if (!process.env.MONGODB_URI) {
   process.exit(1)
 }
 
+if (!process.env.JWT_SECRET) {
+  console.error(
+    'JWT authentication failed: JWT_SECRET is not set in .env'
+  )
+  process.exit(1)
+}
+
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
@@ -173,6 +273,32 @@ mongoose
 
     return startStandaloneServer(server, {
       listen: { port: 4000 },
+
+      context: async ({ req }) => {
+        const auth = req.headers.authorization
+
+        if (
+          auth &&
+          auth.toLowerCase().startsWith('bearer ')
+        ) {
+          const token = auth.substring(7)
+
+          try {
+            const decodedToken = jwt.verify(
+              token,
+              process.env.JWT_SECRET
+            )
+
+            return {
+              currentUser: decodedToken,
+            }
+          } catch (error) {
+            return {}
+          }
+        }
+
+        return {}
+      },
     })
   })
   .then(({ url }) => {
