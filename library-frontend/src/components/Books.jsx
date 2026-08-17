@@ -15,31 +15,70 @@ const ALL_BOOKS = gql`
   }
 `
 
+const ME = gql`
+  query {
+    me {
+      username
+      favoriteGenre
+    }
+  }
+`
+
 const Books = (props) => {
-  const result = useQuery(ALL_BOOKS)
   const [genre, setGenre] = useState(null)
+
+  const booksResult = useQuery(ALL_BOOKS)
+  const meResult = useQuery(ME)
 
   if (!props.show) {
     return null
   }
 
-  if (result.loading) {
+  if (booksResult.loading || meResult.loading) {
     return <div>loading...</div>
   }
 
-  const books = result.data.allBooks
+  if (booksResult.error) {
+    return <div>Error loading books: {booksResult.error.message}</div>
+  }
 
-  const genres = [...new Set(books.flatMap((book) => book.genres))]
+  const books = booksResult.data.allBooks
+  const user = meResult.data.me
 
-  const booksToShow = genre
-    ? books.filter((book) => book.genres.includes(genre))
-    : books
+  const genres = [
+    ...new Set(books.flatMap((book) => book.genres)),
+  ]
+
+  let booksToShow = books
+
+  // Exercise 21:
+  // Show books based on the logged-in user's favourite genre
+  if (props.recommendations && user) {
+    booksToShow = books.filter((book) =>
+      book.genres.includes(user.favoriteGenre)
+    )
+  }
+  // Exercise 20:
+  // Normal genre filtering
+  else if (genre) {
+    booksToShow = books.filter((book) =>
+      book.genres.includes(genre)
+    )
+  }
 
   return (
     <div>
       <h2>books</h2>
 
-      {genre && <h3>in genre {genre}</h3>}
+      {props.recommendations && user && (
+        <h3>
+          books in your favourite genre: {user.favoriteGenre}
+        </h3>
+      )}
+
+      {!props.recommendations && genre && (
+        <h3>in genre {genre}</h3>
+      )}
 
       <table>
         <tbody>
@@ -59,17 +98,22 @@ const Books = (props) => {
         </tbody>
       </table>
 
-      <div>
-        {genres.map((genre) => (
-          <button key={genre} onClick={() => setGenre(genre)}>
-            {genre}
-          </button>
-        ))}
+      {!props.recommendations && (
+        <div>
+          {genres.map((genre) => (
+            <button
+              key={genre}
+              onClick={() => setGenre(genre)}
+            >
+              {genre}
+            </button>
+          ))}
 
-        <button onClick={() => setGenre(null)}>
-          all genres
-        </button>
-      </div>
+          <button onClick={() => setGenre(null)}>
+            all genres
+          </button>
+        </div>
+      )}
     </div>
   )
 }
