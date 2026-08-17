@@ -2,14 +2,29 @@ require('dotenv').config()
 
 const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
+const express = require('express')
+const cors = require('cors')
+const { createServer } = require('http')
 
 const { ApolloServer } = require('@apollo/server')
-const { startStandaloneServer } = require('@apollo/server/standalone')
+const { expressMiddleware } = require('@apollo/server/express4')
+const {
+  ApolloServerPluginDrainHttpServer,
+} = require('@apollo/server/plugin/drainHttpServer')
+
 const { GraphQLError } = require('graphql')
+const { makeExecutableSchema } = require('@graphql-tools/schema')
+const { WebSocketServer } = require('ws')
+const { useServer } = require('graphql-ws/use/ws')
 
 const Book = require('./models/Book')
 const Author = require('./models/Author')
 const User = require('./models/User')
+
+
+// -------------------------
+// GraphQL schema
+// -------------------------
 
 const typeDefs = `
   type Book {
@@ -64,7 +79,62 @@ const typeDefs = `
       password: String!
     ): Token
   }
+
+  type Subscription {
+    bookAdded: Book!
+  }
 `
+
+
+// -------------------------
+// Simple PubSub
+// -------------------------
+
+const subscribers = new Set()
+
+const subscribeToBookAdded = async function* () {
+  const queue = []
+
+  const subscriber = {
+    queue,
+    resolve: null,
+  }
+
+  subscribers.add(subscriber)
+
+  try {
+    while (true) {
+      if (queue.length > 0) {
+        yield {
+          bookAdded: queue.shift(),
+        }
+      } else {
+        await new Promise((resolve) => {
+          subscriber.resolve = resolve
+        })
+      }
+    }
+  } finally {
+    subscribers.delete(subscriber)
+  }
+}
+
+
+const publishBookAdded = (book) => {
+  subscribers.forEach((subscriber) => {
+    subscriber.queue.push(book)
+
+    if (subscriber.resolve) {
+      subscriber.resolve()
+      subscriber.resolve = null
+    }
+  })
+}
+
+
+// -------------------------
+// Resolvers
+// -------------------------
 
 const resolvers = {
   Query: {
@@ -104,6 +174,7 @@ const resolvers = {
       return Promise.all(
         authors.map(async (author) => ({
           ...author.toObject(),
+
           bookCount: await Book.countDocuments({
             author: author._id,
           }),
@@ -119,6 +190,11 @@ const resolvers = {
       return User.findById(context.currentUser.id)
     },
   },
+
+
+  // -------------------------
+  // Mutations
+  // -------------------------
 
   Mutation: {
     createUser: async (root, args) => {
@@ -140,6 +216,7 @@ const resolvers = {
         })
       }
     },
+
 
     login: async (root, args) => {
       const user = await User.findOne({
@@ -166,6 +243,7 @@ const resolvers = {
         ),
       }
     },
+
 
     addBook: async (root, args, context) => {
       if (!context.currentUser) {
@@ -198,7 +276,15 @@ const resolvers = {
 
         await book.save()
 
-        return Book.findById(book._id).populate('author')
+        const savedBook = await Book
+          .findById(book._id)
+          .populate('author')
+
+
+        // Publish the new book
+        publishBookAdded(savedBook)
+
+        return savedBook
       } catch (error) {
         throw new GraphQLError('Adding book failed', {
           extensions: {
@@ -207,6 +293,7 @@ const resolvers = {
         })
       }
     },
+
 
     editAuthor: async (root, args, context) => {
       if (!context.currentUser) {
@@ -232,6 +319,7 @@ const resolvers = {
 
         return {
           ...author.toObject(),
+
           bookCount: await Book.countDocuments({
             author: author._id,
           }),
@@ -245,17 +333,39 @@ const resolvers = {
       }
     },
   },
+
+
+  // -------------------------
+  // Subscription
+  // -------------------------
+
+  Subscription: {
+    bookAdded: {
+      subscribe: subscribeToBookAdded,
+    },
+  },
 }
 
-const server = new ApolloServer({
+
+// -------------------------
+// Create executable schema
+// -------------------------
+
+const schema = makeExecutableSchema({
   typeDefs,
   resolvers,
 })
+
+
+// -------------------------
+// Environment checks
+// -------------------------
 
 if (!process.env.MONGODB_URI) {
   console.error(
     'MongoDB connection failed: MONGODB_URI is not set in .env'
   )
+
   process.exit(1)
 }
 
@@ -263,48 +373,147 @@ if (!process.env.JWT_SECRET) {
   console.error(
     'JWT authentication failed: JWT_SECRET is not set in .env'
   )
+
   process.exit(1)
 }
 
+
+// -------------------------
+// Start server
+// -------------------------
+
+const app = express()
+const httpServer = createServer(app)
+
+
+// -------------------------
+// WebSocket server
+// -------------------------
+
+const wsServer = new WebSocketServer({
+  server: httpServer,
+  path: '/subscriptions',
+})
+
+const serverCleanup = useServer(
+  {
+    schema,
+
+    context: async (ctx) => {
+      const connectionParams =
+        ctx.connectionParams || {}
+
+      const auth =
+        connectionParams.authorization ||
+        connectionParams.Authorization
+
+      if (
+        auth &&
+        typeof auth === 'string' &&
+        auth.toLowerCase().startsWith('bearer ')
+      ) {
+        const token = auth.substring(7)
+
+        try {
+          const decodedToken = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+          )
+
+          return {
+            currentUser: decodedToken,
+          }
+        } catch (error) {
+          return {}
+        }
+      }
+
+      return {}
+    },
+  },
+  wsServer
+)
+
+
+// -------------------------
+// Apollo Server
+// -------------------------
+
+const server = new ApolloServer({
+  schema,
+
+  plugins: [
+    ApolloServerPluginDrainHttpServer({
+      httpServer,
+    }),
+
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose()
+          },
+        }
+      },
+    },
+  ],
+})
+
+
+// -------------------------
+// Start everything
+// -------------------------
+
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('Connected to MongoDB')
 
-    return startStandaloneServer(server, {
-      listen: {
-        port: 4000,
-      },
+    await server.start()
 
-      context: async ({ req }) => {
-        const auth = req.headers.authorization
+    app.use(
+      '/graphql',
+      cors(),
+      express.json(),
 
-        if (
-          auth &&
-          auth.toLowerCase().startsWith('bearer ')
-        ) {
-          const token = auth.substring(7)
+      expressMiddleware(server, {
+        context: async ({ req }) => {
+          const auth = req.headers.authorization
 
-          try {
-            const decodedToken = jwt.verify(
-              token,
-              process.env.JWT_SECRET
-            )
+          if (
+            auth &&
+            auth.toLowerCase().startsWith('bearer ')
+          ) {
+            const token = auth.substring(7)
 
-            return {
-              currentUser: decodedToken,
+            try {
+              const decodedToken = jwt.verify(
+                token,
+                process.env.JWT_SECRET
+              )
+
+              return {
+                currentUser: decodedToken,
+              }
+            } catch (error) {
+              return {}
             }
-          } catch (error) {
-            return {}
           }
-        }
 
-        return {}
-      },
+          return {}
+        },
+      })
+    )
+
+    httpServer.listen(4000, () => {
+      console.log(
+        'Server ready at http://localhost:4000/graphql'
+      )
+
+      console.log(
+        'Subscriptions ready at ws://localhost:4000/subscriptions'
+      )
     })
-  })
-  .then(({ url }) => {
-    console.log(`Server ready at ${url}`)
   })
   .catch((error) => {
     console.error('Server startup failed')
