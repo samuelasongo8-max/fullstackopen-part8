@@ -12,60 +12,58 @@ const Author = require('./models/Author')
 const User = require('./models/User')
 
 const typeDefs = `
-type Book {
-  title: String!
-  published: Int!
-  author: Author!
-  genres: [String!]!
-  id: ID!
-}
-
-type Author {
-  name: String!
-  born: Int
-  bookCount: Int!
-}
-
-type User {
-  username: String!
-  favoriteGenre: String!
-  id: ID!
-}
-
-type Token {
-  value: String!
-}
-
-type Query {
-  bookCount: Int!
-  authorCount: Int!
-  allBooks(author: String, genre: String): [Book!]!
-  allAuthors: [Author!]!
-  me: User
-}
-
-type Mutation {
-  addBook(
+  type Book {
     title: String!
-    author: String!
     published: Int!
+    author: Author!
     genres: [String!]!
-  ): Book!
+    id: ID!
+  }
 
-  editAuthor(name: String!, setBornTo: Int!): Author
+  type Author {
+    name: String!
+    born: Int
+    bookCount: Int!
+  }
 
-  createUser(
+  type User {
     username: String!
     favoriteGenre: String!
-  ): User
+    id: ID!
+  }
 
-  login(
-    username: String!
-    password: String!
-  ): Token
+  type Token {
+    value: String!
+  }
 
-  _resetDatabase: Boolean
-}
+  type Query {
+    bookCount: Int!
+    authorCount: Int!
+    allBooks(author: String, genre: String): [Book!]!
+    allAuthors: [Author!]!
+    me: User
+  }
+
+  type Mutation {
+    addBook(
+      title: String!
+      author: String!
+      published: Int!
+      genres: [String!]!
+    ): Book!
+
+    editAuthor(name: String!, setBornTo: Int!): Author
+
+    createUser(
+      username: String!
+      favoriteGenre: String!
+    ): User
+
+    login(
+      username: String!
+      password: String!
+    ): Token
+  }
 `
 
 const resolvers = {
@@ -246,20 +244,6 @@ const resolvers = {
         })
       }
     },
-
-    _resetDatabase: async () => {
-      if (process.env.NODE_ENV !== 'test') {
-        throw new GraphQLError(
-          '_resetDatabase is only available in test mode'
-        )
-      }
-
-      await Author.deleteMany({})
-      await Book.deleteMany({})
-      await User.deleteMany({})
-
-      return true
-    },
   },
 }
 
@@ -288,7 +272,9 @@ mongoose
     console.log('Connected to MongoDB')
 
     return startStandaloneServer(server, {
-      listen: { port: 4000 },
+      listen: {
+        port: 4000,
+      },
 
       context: async ({ req }) => {
         const auth = req.headers.authorization
@@ -321,7 +307,7 @@ mongoose
     console.log(`Server ready at ${url}`)
   })
   .catch((error) => {
-    console.error('MongoDB connection failed')
+    console.error('Server startup failed')
     console.error(`Error type: ${error.name}`)
     console.error(`Error message: ${error.message}`)
   })
