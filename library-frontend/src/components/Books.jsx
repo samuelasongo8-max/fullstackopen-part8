@@ -27,13 +27,19 @@ const ME = gql`
 const Books = (props) => {
   const [genre, setGenre] = useState(null)
 
+  const meResult = useQuery(ME, {
+    skip: !props.show || !props.token,
+  })
+  const favoriteGenre = meResult.data?.me?.favoriteGenre
+  const user = meResult.data?.me
+
   const booksResult = useQuery(ALL_BOOKS, {
     variables: {
-      genre: props.recommendations ? null : genre,
+      genre: props.recommendations
+        ? favoriteGenre ?? null
+        : genre,
     },
   })
-
-  const meResult = useQuery(ME)
 
   if (!props.show) {
     return null
@@ -52,7 +58,6 @@ const Books = (props) => {
   }
 
   const books = booksResult.data.allBooks
-  const user = meResult.data.me
 
   const genres = [
     ...new Set(books.flatMap((book) => book.genres)),
@@ -60,12 +65,13 @@ const Books = (props) => {
 
   return (
     <div>
-      <h2>books</h2>
+      <h2>{props.recommendations ? 'recommendations' : 'books'}</h2>
 
       {props.recommendations && user && (
-        <h3>
-          books in your favourite genre: {user.favoriteGenre}
-        </h3>
+        <>
+          <h3>books in your favorite genre</h3>
+          <h3>{user.favoriteGenre}</h3>
+        </>
       )}
 
       {!props.recommendations && genre && (

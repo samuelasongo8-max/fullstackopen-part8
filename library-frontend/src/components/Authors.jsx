@@ -55,67 +55,69 @@ const Authors = (props) => {
   }
 
   return (
- 
-  <div>
-    <h2>authors</h2>
+    <div>
+      <h2>authors</h2>
 
-    <table>
-      <tbody>
-        <tr>
-          <th></th>
-          <th>born</th>
-          <th>books</th>
-        </tr>
-
-        {authors.map((a) => (
-          <tr key={a.name}>
-            <td>{a.name}</td>
-            <td>{a.born}</td>
-            <td>{a.bookCount}</td>
+      <table>
+        <tbody>
+          <tr>
+            <th></th>
+            <th>born</th>
+            <th>books</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
 
-    <h3>Set birth year</h3>
-
-    <form onSubmit={submit}>
-      <label>
-        author
-        <select
-          value={name}
-          onChange={({ target }) => setName(target.value)}
-        >
-          <option value="">select author</option>
-
-          {authors.map((author) => (
-            <option key={author.name} value={author.name}>
-              {author.name}
-            </option>
+          {authors.map((a) => (
+            <tr key={a.name}>
+              <td>{a.name}</td>
+              <td>{a.born}</td>
+              <td>{a.bookCount}</td>
+            </tr>
           ))}
-        </select>
-      </label>
+        </tbody>
+      </table>
 
-    <label>
-  born
-  <select
-    value={born}
-    onChange={({ target }) => setBorn(target.value)}
-    disabled={!name}
-  >
-    <option value="">select year</option>
-    {Array.from({ length: 100 }, (_, i) => 2025 - i).map((year) => (
-      <option key={year} value={year}>
-        {year}
-      </option>
-    ))}
-  </select>
-</label>
+      {props.token && (
+        <>
+          <h3>Set birthyear</h3>
 
-      <button type="submit">update author</button>
-    </form>
-  </div>
-)
+          <form onSubmit={submit}>
+            <div>
+              <label htmlFor="author-name">author</label>
+              <select
+                id="author-name"
+                name="name"
+                value={name}
+                onChange={({ target }) => setName(target.value)}
+              >
+                <option value="">select author</option>
+
+                {authors.map((author) => (
+                  <option key={author.name} value={author.name}>
+                    {author.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="author-born">born</label>
+              <input
+                id="author-born"
+                name="born"
+                type="number"
+                value={born}
+                onChange={({ target }) => setBorn(target.value)}
+                disabled={!name}
+              />
+            </div>
+
+            <button type="submit">update author</button>
+          </form>
+        </>
+      )}
+    </div>
+  )
 }
+
 
 export default Authors
