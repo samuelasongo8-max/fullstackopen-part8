@@ -2,8 +2,8 @@ import { gql, useQuery } from '@apollo/client'
 import { useState } from 'react'
 
 const ALL_BOOKS = gql`
-  query {
-    allBooks {
+  query allBooks($genre: String) {
+    allBooks(genre: $genre) {
       title
       author {
         name
@@ -27,7 +27,12 @@ const ME = gql`
 const Books = (props) => {
   const [genre, setGenre] = useState(null)
 
-  const booksResult = useQuery(ALL_BOOKS)
+  const booksResult = useQuery(ALL_BOOKS, {
+    variables: {
+      genre: props.recommendations ? null : genre,
+    },
+  })
+
   const meResult = useQuery(ME)
 
   if (!props.show) {
@@ -39,7 +44,11 @@ const Books = (props) => {
   }
 
   if (booksResult.error) {
-    return <div>Error loading books: {booksResult.error.message}</div>
+    return (
+      <div>
+        Error loading books: {booksResult.error.message}
+      </div>
+    )
   }
 
   const books = booksResult.data.allBooks
@@ -48,23 +57,6 @@ const Books = (props) => {
   const genres = [
     ...new Set(books.flatMap((book) => book.genres)),
   ]
-
-  let booksToShow = books
-
-  // Exercise 21:
-  // Show books based on the logged-in user's favourite genre
-  if (props.recommendations && user) {
-    booksToShow = books.filter((book) =>
-      book.genres.includes(user.favoriteGenre)
-    )
-  }
-  // Exercise 20:
-  // Normal genre filtering
-  else if (genre) {
-    booksToShow = books.filter((book) =>
-      book.genres.includes(genre)
-    )
-  }
 
   return (
     <div>
@@ -88,7 +80,7 @@ const Books = (props) => {
             <th>published</th>
           </tr>
 
-          {booksToShow.map((book) => (
+          {books.map((book) => (
             <tr key={book.id}>
               <td>{book.title}</td>
               <td>{book.author.name}</td>
