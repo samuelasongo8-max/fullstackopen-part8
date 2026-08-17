@@ -21,7 +21,6 @@ const Book = require('./models/Book')
 const Author = require('./models/Author')
 const User = require('./models/User')
 
-
 // -------------------------
 // GraphQL schema
 // -------------------------
@@ -85,7 +84,6 @@ const typeDefs = `
   }
 `
 
-
 // -------------------------
 // Simple PubSub
 // -------------------------
@@ -119,7 +117,6 @@ const subscribeToBookAdded = async function* () {
   }
 }
 
-
 const publishBookAdded = (book) => {
   subscribers.forEach((subscriber) => {
     subscriber.queue.push(book)
@@ -130,7 +127,6 @@ const publishBookAdded = (book) => {
     }
   })
 }
-
 
 // -------------------------
 // Resolvers
@@ -146,6 +142,8 @@ const resolvers = {
       return Author.countDocuments()
     },
 
+    // Exercise 5:
+    // allBooks can be filtered by author and/or genre
     allBooks: async (root, args) => {
       const filter = {}
 
@@ -174,7 +172,6 @@ const resolvers = {
       return Promise.all(
         authors.map(async (author) => ({
           ...author.toObject(),
-
           bookCount: await Book.countDocuments({
             author: author._id,
           }),
@@ -190,7 +187,6 @@ const resolvers = {
       return User.findById(context.currentUser.id)
     },
   },
-
 
   // -------------------------
   // Mutations
@@ -217,7 +213,6 @@ const resolvers = {
       }
     },
 
-
     login: async (root, args) => {
       const user = await User.findOne({
         username: args.username,
@@ -243,7 +238,6 @@ const resolvers = {
         ),
       }
     },
-
 
     addBook: async (root, args, context) => {
       if (!context.currentUser) {
@@ -280,8 +274,8 @@ const resolvers = {
           .findById(book._id)
           .populate('author')
 
-
-        // Publish the new book
+        // Exercise 25:
+        // Publish the newly added book
         publishBookAdded(savedBook)
 
         return savedBook
@@ -293,7 +287,6 @@ const resolvers = {
         })
       }
     },
-
 
     editAuthor: async (root, args, context) => {
       if (!context.currentUser) {
@@ -319,7 +312,6 @@ const resolvers = {
 
         return {
           ...author.toObject(),
-
           bookCount: await Book.countDocuments({
             author: author._id,
           }),
@@ -334,7 +326,6 @@ const resolvers = {
     },
   },
 
-
   // -------------------------
   // Subscription
   // -------------------------
@@ -346,7 +337,6 @@ const resolvers = {
   },
 }
 
-
 // -------------------------
 // Create executable schema
 // -------------------------
@@ -356,7 +346,6 @@ const schema = makeExecutableSchema({
   resolvers,
 })
 
-
 // -------------------------
 // Environment checks
 // -------------------------
@@ -365,7 +354,6 @@ if (!process.env.MONGODB_URI) {
   console.error(
     'MongoDB connection failed: MONGODB_URI is not set in .env'
   )
-
   process.exit(1)
 }
 
@@ -373,10 +361,8 @@ if (!process.env.JWT_SECRET) {
   console.error(
     'JWT authentication failed: JWT_SECRET is not set in .env'
   )
-
   process.exit(1)
 }
-
 
 // -------------------------
 // Start server
@@ -384,7 +370,6 @@ if (!process.env.JWT_SECRET) {
 
 const app = express()
 const httpServer = createServer(app)
-
 
 // -------------------------
 // WebSocket server
@@ -434,7 +419,6 @@ const serverCleanup = useServer(
   wsServer
 )
 
-
 // -------------------------
 // Apollo Server
 // -------------------------
@@ -458,7 +442,6 @@ const server = new ApolloServer({
     },
   ],
 })
-
 
 // -------------------------
 // Start everything
