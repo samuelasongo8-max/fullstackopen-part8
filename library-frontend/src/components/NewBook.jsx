@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { gql, useMutation } from '@apollo/client'
 
 const ALL_BOOKS = gql`
-  query {
-    allBooks {
+  query allBooks($genre: String) {
+    allBooks(genre: $genre) {
       title
-      published
-      genres
       author {
         name
       }
+      published
+      genres
+      id
     }
   }
 `
@@ -28,16 +29,17 @@ const CREATE_BOOK = gql`
       genres: $genres
     ) {
       title
-      published
-      genres
       author {
         name
       }
+      published
+      genres
+      id
     }
   }
 `
 
-const NewBook = ({ show }) => {
+const NewBook = ({ show, token }) => {
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [published, setPublished] = useState('')
@@ -55,12 +57,17 @@ const NewBook = ({ show }) => {
   const submit = async (event) => {
     event.preventDefault()
 
-    createBook({
+    await createBook({
       variables: {
         title,
         author,
         published: Number(published),
         genres,
+      },
+      context: {
+        headers: {
+          authorization: token ? `Bearer ${token}` : '',
+        },
       },
     })
 
@@ -114,6 +121,7 @@ const NewBook = ({ show }) => {
             value={genre}
             onChange={({ target }) => setGenre(target.value)}
           />
+
           <button type="button" onClick={addGenre}>
             add genre
           </button>
@@ -123,7 +131,9 @@ const NewBook = ({ show }) => {
           <strong>genres:</strong> {genres.join(', ')}
         </div>
 
-        <button type="submit">create book</button>
+        <button type="submit">
+          create book
+        </button>
       </form>
     </div>
   )
